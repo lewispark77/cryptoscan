@@ -19,7 +19,7 @@
         
         <header class="bg-gray-950 p-4 text-center border-b border-gray-700 sticky top-0 z-10">
             <h1 class="text-xl font-bold text-blue-400">크립토 스캐너 ⚡</h1>
-            <p id="update-time" class="text-xs text-yellow-400 mt-1 font-bold">1/3 데이터 확인 중...</p>
+            <p id="update-time" class="text-xs text-yellow-400 mt-1 font-bold">네트워크 연결 중...</p>
         </header>
 
         <div class="grid grid-cols-4 gap-1 px-1 py-3 bg-gray-700 text-xs text-gray-300 font-semibold text-center border-b border-gray-600 sticky top-[72px] z-10 shadow-md">
@@ -30,10 +30,7 @@
         </div>
 
         <div id="coin-list" class="divide-y divide-gray-700 bg-gray-800 pb-2 flex-grow">
-            <div class="p-6 text-center text-sm text-gray-400">
-                실시간 거래소 데이터를 연동하고 있습니다...<br>잠시만 기다려주세요.
             </div>
-        </div>
 
         <div class="p-4 bg-gray-900 border-t border-gray-800 sticky bottom-0 z-10">
             <a href="https://blog.naver.com/" target="_blank" class="block w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg text-sm transition-colors shadow-lg">
@@ -47,49 +44,43 @@
         const priceData = {};
         let top20Coins = [];
         
-        // 플랜 B: API 호출 차단(Rate Limit) 시 가동될 비상용 메이저 20개 코인 리스트
+        // 메이저 코인 20개 (초기 세팅용 및 API 차단 시 예비용)
         const fallbackCoins = ['BTC', 'ETH', 'XRP', 'SOL', 'DOGE', 'SHIB', 'ADA', 'TRX', 'BCH', 'ETC', 'SUI', 'APT', 'SEI', 'STX', 'AVAX', 'LINK', 'DOT', 'NEAR', 'SAND', 'MANA'];
 
         async function initScanner() {
-            try {
-                // 1. 동적 거래량 리스트 추출 시도
-                const upbitRes = await fetch('https://api.upbit.com/v1/market/all');
-                if(!upbitRes.ok) throw new Error("업비트 차단됨");
-                const upbitMarkets = await upbitRes.json();
-                const cachedUpbitCoins = upbitMarkets.filter(m => m.market.startsWith('KRW-')).map(m => m.market.split('-')[1]);
-
-                document.getElementById('update-time').innerText = "2/3 상위 코인 추출 중...";
-                const bithumbRes = await fetch('https://api.bithumb.com/public/ticker/ALL_KRW');
-                if(!bithumbRes.ok) throw new Error("빗썸 차단됨");
-                const bithumbData = await bithumbRes.json();
-                
-                let activeCoins = [];
-                for (const coin in bithumbData.data) {
-                    if (coin !== 'date' && cachedUpbitCoins.includes(coin)) {
-                        activeCoins.push({
-                            coin: coin,
-                            volume: parseFloat(bithumbData.data[coin].acc_trade_value_24h)
-                        });
-                    }
-                }
-                activeCoins.sort((a, b) => b.volume - a.volume);
-                top20Coins = activeCoins.slice(0, 20).map(c => c.coin);
-
-            } catch (error) {
-                // 에러 발생 시 플랜 B (비상용 리스트) 가동
-                console.warn("API 차단 감지, 비상용 리스트로 우회합니다.", error);
-                top20Coins = fallbackCoins;
-            }
-
-            // 2. 메모리 객체 세팅
+            // 1. 앱 켜자마자 빈 화면 절대 방지! 일단 20개 목록부터 띄움
+            top20Coins = fallbackCoins;
             top20Coins.forEach(coin => {
                 priceData[coin] = { upbit: null, bithumb: null };
             });
+            renderUI(); // 화면에 "수신 대기중" 목록 즉시 렌더링
 
-            document.getElementById('update-time').innerText = "3/3 소켓 스트리밍 준비 중...";
-
-            // 3. 빈 화면 방지용 1회 시세 호출 (이것도 막히면 무시하고 진행)
             try {
+                // 2. 동적 거래량 상위 20개 리스트 추출 시도
+                const bithumbRes = await fetch('https://api.bithumb.com/public/ticker/ALL_KRW');
+                if(bithumbRes.ok) {
+                    const bithumbData = await bithumbRes.json();
+                    
+                    let activeCoins = [];
+                    for (const coin in bithumbData.data) {
+                        if (coin !== 'date' && fallbackCoins.includes(coin)) { // 빠른 처리를 위해 메이저 20개 안에서 거래량 정렬
+                            activeCoins.push({
+                                coin: coin,
+                                volume: parseFloat(bithumbData.data[coin].acc_trade_value_24h),
+                                initPrice: parseFloat(bithumbData.data[coin].closing_price)
+                            });
+                        }
+                    }
+                    activeCoins.sort((a, b) => b.volume - a.volume);
+                    
+                    // 성공하면 리스트와 빗썸 초기 가격 업데이트
+                    top20Coins = activeCoins.map(c => c.coin);
+                    top20Coins.forEach(coin => {
+                        priceData[coin] = { upbit: null, bithumb: activeCoins.find(c => c.coin === coin)?.initPrice || null };
+                    });
+                }
+
+                // 3. 업비트 초기 가격 1회 호출 시도 (API 차단 시 조용히 넘어감)
                 const upbitQuery = top20Coins.map(coin => `KRW-${coin}`).join(',');
                 const upbitInitRes = await fetch(`https://api.upbit.com/v1/ticker?markets=${upbitQuery}`);
                 if(upbitInitRes.ok) {
@@ -99,17 +90,19 @@
                         if(priceData[c]) priceData[c].upbit = item.trade_price;
                     });
                 }
-            } catch(e) {}
+            } catch (error) {
+                console.warn("API 차단 상태. 소켓 전용 모드로 작동합니다.");
+            }
 
-            // 화면을 일단 그림
+            // 초기값 세팅 후 한 번 더 그리기
             renderUI();
             document.getElementById('update-time').innerText = "🟢 실시간 스트리밍 가동 중";
 
-            // 4. 웹소켓 연결 (웹소켓은 호출 제한의 영향을 받지 않음)
+            // 4. 초고속 웹소켓 파이프 연결
             connectUpbitSocket();
             connectBithumbSocket();
 
-            // 5. 화면 렌더링 루프
+            // 5. 0.5초마다 화면 갱신
             setInterval(renderUI, 500);
         }
 
@@ -121,7 +114,7 @@
             ws.onopen = () => {
                 const codes = top20Coins.map(coin => `KRW-${coin}`);
                 ws.send(JSON.stringify([
-                    { ticket: "premium-scanner" },
+                    { ticket: "crypto-scanner" },
                     { type: "ticker", codes: codes }
                 ]));
             };
@@ -147,7 +140,7 @@
                 ws.send(JSON.stringify({
                     type: "ticker",
                     symbols: symbols,
-                    tickTypes: ["MID"] // 체결될 때마다 실시간 수신
+                    tickTypes: ["MID"] 
                 }));
             };
 
@@ -164,7 +157,7 @@
             };
         }
 
-        // --- 화면 그리기 ---
+        // --- 화면 그리기 로직 (무결점 렌더링) ---
         function renderUI() {
             let analysisResults = [];
 
@@ -172,37 +165,46 @@
                 const uPrice = priceData[coin].upbit;
                 const bPrice = priceData[coin].bithumb;
                 
+                // 둘 중 하나라도 없으면 차액을 -1로 처리하여 맨 밑으로 내림
+                let diff = null;
+                let absGap = -1;
+
                 if(uPrice && bPrice) {
-                    const diff = uPrice - bPrice; 
-                    analysisResults.push({
-                        coin: coin,
-                        upbit: uPrice,
-                        bithumb: bPrice,
-                        diff: diff,
-                        absGap: Math.abs(diff) 
-                    });
+                    diff = uPrice - bPrice; 
+                    absGap = Math.abs(diff);
                 }
+
+                analysisResults.push({
+                    coin: coin,
+                    upbit: uPrice,
+                    bithumb: bPrice,
+                    diff: diff,
+                    absGap: absGap 
+                });
             });
 
+            // 절대값 기준 내림차순 정렬 (수신 대기중인 코인은 맨 아래로)
             analysisResults.sort((a, b) => b.absGap - a.absGap);
-
-            const listContainer = document.getElementById('coin-list');
-            if(analysisResults.length === 0) return; 
 
             let htmlString = "";
             analysisResults.forEach(data => {
-                const fmtUpbit = data.upbit.toLocaleString();
-                const fmtBithumb = data.bithumb.toLocaleString();
-                const fmtDiff = Math.abs(data.diff).toLocaleString(); 
+                // 가격이 아직 도착 안 했으면 '수신중' 표시
+                const fmtUpbit = data.upbit ? data.upbit.toLocaleString() : '<span class="text-gray-500 text-xs">수신중</span>';
+                const fmtBithumb = data.bithumb ? data.bithumb.toLocaleString() : '<span class="text-gray-500 text-xs">수신중</span>';
                 
-                let diffColorClass = "text-gray-400";
+                let diffColorClass = "text-gray-600";
                 let sign = "";
-                if (data.diff > 0) {
-                    diffColorClass = "text-red-400"; 
-                    sign = "+";
-                } else if (data.diff < 0) {
-                    diffColorClass = "text-blue-400"; 
-                    sign = "-";
+                let fmtDiff = '<span class="text-gray-500 text-xs">대기</span>';
+
+                if (data.diff !== null) {
+                    fmtDiff = Math.abs(data.diff).toLocaleString(); 
+                    if (data.diff > 0) {
+                        diffColorClass = "text-red-400"; 
+                        sign = "+";
+                    } else if (data.diff < 0) {
+                        diffColorClass = "text-blue-400"; 
+                        sign = "-";
+                    }
                 }
 
                 htmlString += `
@@ -214,7 +216,7 @@
                 </div>`;
             });
 
-            listContainer.innerHTML = htmlString;
+            document.getElementById('coin-list').innerHTML = htmlString;
         }
 
         initScanner();
