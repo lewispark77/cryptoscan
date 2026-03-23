@@ -15,24 +15,24 @@
 </head>
 <body class="bg-gray-900 text-white flex justify-center min-h-screen font-sans">
 
-    <div class="w-full max-w-md bg-gray-800 shadow-xl flex flex-col min-h-screen">
+    <div class="w-full max-w-md bg-gray-800 shadow-xl flex flex-col min-h-screen relative">
         
-        <header class="bg-gray-950 p-4 text-center border-b border-gray-700 sticky top-0 z-10">
-            <h1 class="text-xl font-bold text-blue-400">크립토 스캐너 ⚡</h1>
+        <header class="bg-gray-950 p-3 text-center border-b border-gray-700 sticky top-0 z-10">
+            <h1 class="text-lg font-bold text-blue-400">크립토 스캐너 ⚡</h1>
             <p id="update-time" class="text-xs text-yellow-400 mt-1 font-bold">네트워크 연결 중...</p>
         </header>
 
-        <div class="grid grid-cols-4 gap-1 px-1 py-3 bg-gray-700 text-xs text-gray-300 font-semibold text-center border-b border-gray-600 sticky top-[72px] z-10 shadow-md">
+        <div class="grid grid-cols-[1.5fr,1.5fr,2.2fr,1.5fr] gap-1 px-1 py-3 bg-gray-700 text-xs text-gray-300 font-semibold text-center border-b border-gray-600 sticky top-[64px] z-10 shadow-md">
             <div>코인명</div>
             <div>업비트(KRW)</div>
-            <div class="text-white font-bold">차액(Gap)</div>
+            <div class="text-white font-bold">차액(Gap) / <span class="text-yellow-300">1천만 마진</span></div>
             <div>빗썸(KRW)</div>
         </div>
 
-        <div id="coin-list" class="divide-y divide-gray-700 bg-gray-800 pb-2 flex-grow">
+        <div id="coin-list" class="divide-y divide-gray-700 bg-gray-800 pb-2 flex-grow overflow-y-auto">
             </div>
 
-        <div class="p-4 bg-gray-900 border-t border-gray-800 sticky bottom-0 z-10">
+        <div class="p-3 bg-gray-900 border-t border-gray-800 sticky bottom-0 z-10">
             <a href="https://blog.naver.com/" target="_blank" class="block w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg text-sm transition-colors shadow-lg">
                 상한가 헌터 헤리 블로그 바로가기
             </a>
@@ -44,26 +44,29 @@
         const priceData = {};
         let top20Coins = [];
         
-        // 메이저 코인 20개 (초기 세팅용 및 API 차단 시 예비용)
         const fallbackCoins = ['BTC', 'ETH', 'XRP', 'SOL', 'DOGE', 'SHIB', 'ADA', 'TRX', 'BCH', 'ETC', 'SUI', 'APT', 'SEI', 'STX', 'AVAX', 'LINK', 'DOT', 'NEAR', 'SAND', 'MANA'];
 
+        // 고정 거래 금액 (1천만 원) 및 예상 총 수수료율 (0.1%)
+        const tradeVolume = 10000000;
+        const totalFeeRate = 0.0010; // 0.1%
+
         async function initScanner() {
-            // 1. 앱 켜자마자 빈 화면 절대 방지! 일단 20개 목록부터 띄움
+            // 빈 화면 방지 세팅
             top20Coins = fallbackCoins;
             top20Coins.forEach(coin => {
                 priceData[coin] = { upbit: null, bithumb: null };
             });
-            renderUI(); // 화면에 "수신 대기중" 목록 즉시 렌더링
+            renderUI(); 
 
             try {
-                // 2. 동적 거래량 상위 20개 리스트 추출 시도
+                // 빗썸 거래량 상위 20개 추출
                 const bithumbRes = await fetch('https://api.bithumb.com/public/ticker/ALL_KRW');
                 if(bithumbRes.ok) {
                     const bithumbData = await bithumbRes.json();
                     
                     let activeCoins = [];
                     for (const coin in bithumbData.data) {
-                        if (coin !== 'date' && fallbackCoins.includes(coin)) { // 빠른 처리를 위해 메이저 20개 안에서 거래량 정렬
+                        if (coin !== 'date' && fallbackCoins.includes(coin)) {
                             activeCoins.push({
                                 coin: coin,
                                 volume: parseFloat(bithumbData.data[coin].acc_trade_value_24h),
@@ -73,14 +76,13 @@
                     }
                     activeCoins.sort((a, b) => b.volume - a.volume);
                     
-                    // 성공하면 리스트와 빗썸 초기 가격 업데이트
                     top20Coins = activeCoins.map(c => c.coin);
                     top20Coins.forEach(coin => {
                         priceData[coin] = { upbit: null, bithumb: activeCoins.find(c => c.coin === coin)?.initPrice || null };
                     });
                 }
 
-                // 3. 업비트 초기 가격 1회 호출 시도 (API 차단 시 조용히 넘어감)
+                // 업비트 초기 가격 1회 호출
                 const upbitQuery = top20Coins.map(coin => `KRW-${coin}`).join(',');
                 const upbitInitRes = await fetch(`https://api.upbit.com/v1/ticker?markets=${upbitQuery}`);
                 if(upbitInitRes.ok) {
@@ -94,15 +96,14 @@
                 console.warn("API 차단 상태. 소켓 전용 모드로 작동합니다.");
             }
 
-            // 초기값 세팅 후 한 번 더 그리기
             renderUI();
             document.getElementById('update-time').innerText = "🟢 실시간 스트리밍 가동 중";
 
-            // 4. 초고속 웹소켓 파이프 연결
+            // 웹소켓 연결
             connectUpbitSocket();
             connectBithumbSocket();
 
-            // 5. 0.5초마다 화면 갱신
+            // 0.5초 렌더링 루프
             setInterval(renderUI, 500);
         }
 
@@ -119,15 +120,20 @@
                 ]));
             };
 
-            ws.onmessage = async (event) => {
-                try {
-                    const text = await event.data.text();
-                    const data = JSON.parse(text);
-                    if(data.code) {
-                        const coin = data.code.split('-')[1];
-                        if(priceData[coin]) priceData[coin].upbit = data.trade_price;
-                    }
-                } catch (e) {}
+            ws.onmessage = (event) => {
+                const reader = new FileReader();
+                reader.onload = function() {
+                    try {
+                        const data = JSON.parse(reader.result);
+                        if(data.code) {
+                            const coin = data.code.split('-')[1];
+                            if(priceData[coin] !== undefined) {
+                                priceData[coin].upbit = data.trade_price;
+                            }
+                        }
+                    } catch (e) {}
+                };
+                reader.readAsText(event.data);
             };
         }
 
@@ -149,7 +155,7 @@
                     const data = JSON.parse(event.data);
                     if(data.type === 'ticker') {
                         const coin = data.content.symbol.split('_')[0];
-                        if(priceData[coin]) {
+                        if(priceData[coin] !== undefined) {
                             priceData[coin].bithumb = parseFloat(data.content.closePrice);
                         }
                     }
@@ -157,7 +163,7 @@
             };
         }
 
-        // --- 화면 그리기 로직 (무결점 렌더링) ---
+        // --- 화면 그리기 로직 (직관성 강화) ---
         function renderUI() {
             let analysisResults = [];
 
@@ -165,13 +171,19 @@
                 const uPrice = priceData[coin].upbit;
                 const bPrice = priceData[coin].bithumb;
                 
-                // 둘 중 하나라도 없으면 차액을 -1로 처리하여 맨 밑으로 내림
                 let diff = null;
                 let absGap = -1;
+                let marginKRW = 0;
 
                 if(uPrice && bPrice) {
                     diff = uPrice - bPrice; 
                     absGap = Math.abs(diff);
+
+                    // 현실적인 마진 계산 로직 적용
+                    const minPrice = Math.min(uPrice, bPrice);
+                    const gapRate = absGap / minPrice;
+                    const realMarginRate = gapRate - totalFeeRate; // 수익률에서 수수료 차감
+                    marginKRW = Math.floor(tradeVolume * realMarginRate); // 소수점 버림
                 }
 
                 analysisResults.push({
@@ -179,39 +191,46 @@
                     upbit: uPrice,
                     bithumb: bPrice,
                     diff: diff,
-                    absGap: absGap 
+                    absGap: absGap,
+                    marginKRW: marginKRW
                 });
             });
 
-            // 절대값 기준 내림차순 정렬 (수신 대기중인 코인은 맨 아래로)
+            // 절대값 기준 내림차순 정렬 (차익 기회가 큰 순서)
             analysisResults.sort((a, b) => b.absGap - a.absGap);
 
             let htmlString = "";
             analysisResults.forEach(data => {
-                // 가격이 아직 도착 안 했으면 '수신중' 표시
                 const fmtUpbit = data.upbit ? data.upbit.toLocaleString() : '<span class="text-gray-500 text-xs">수신중</span>';
                 const fmtBithumb = data.bithumb ? data.bithumb.toLocaleString() : '<span class="text-gray-500 text-xs">수신중</span>';
                 
                 let diffColorClass = "text-gray-600";
                 let sign = "";
-                let fmtDiff = '<span class="text-gray-500 text-xs">대기</span>';
+                let gapDisplay = '<span class="text-gray-500 text-xs">대기</span>';
 
                 if (data.diff !== null) {
-                    fmtDiff = Math.abs(data.diff).toLocaleString(); 
-                    if (data.diff > 0) {
-                        diffColorClass = "text-red-400"; 
+                    const fmtGap = Math.abs(data.diff).toLocaleString();
+                    let marginDisplay = "";
+                    
+                    if (data.marginKRW > 0) {
+                        diffColorClass = "text-red-400"; // 양수
                         sign = "+";
+                        // 직관적인 원화 마진 표시
+                        marginDisplay = `<br><span class="text-yellow-300 font-bold text-xs">(+${data.marginKRW.toLocaleString()})</span>`;
                     } else if (data.diff < 0) {
-                        diffColorClass = "text-blue-400"; 
+                        diffColorClass = "text-blue-400"; // 음수 (마진은 여전히 플러스)
                         sign = "-";
+                        marginDisplay = `<br><span class="text-yellow-300 font-bold text-xs">(+${data.marginKRW.toLocaleString()})</span>`;
                     }
+                    
+                    gapDisplay = `${sign}${fmtGap}${marginDisplay}`;
                 }
 
                 htmlString += `
-                <div class="grid grid-cols-4 gap-1 px-1 py-4 items-center text-sm text-center border-b border-gray-700 transition-all duration-200">
+                <div class="grid grid-cols-[1.5fr,1.5fr,2.2fr,1.5fr] gap-1 px-1 py-4 items-center text-sm text-center border-b border-gray-700 transition-all duration-200">
                     <div class="font-bold text-gray-100">${data.coin}</div>
                     <div class="text-gray-300">${fmtUpbit}</div>
-                    <div class="font-bold ${diffColorClass}">${sign}${fmtDiff}</div>
+                    <div class="font-bold ${diffColorClass}">${gapDisplay}</div>
                     <div class="text-gray-300">${fmtBithumb}</div>
                 </div>`;
             });
