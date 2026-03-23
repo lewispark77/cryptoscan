@@ -19,7 +19,7 @@
         
         <header class="bg-gray-950 p-4 text-center border-b border-gray-700 sticky top-0 z-10">
             <h1 class="text-xl font-bold text-blue-400">프리미엄 스캐너 ⚡</h1>
-            <p id="update-time" class="text-xs text-green-400 mt-1 font-bold">초고속 실시간 스트리밍 연결 중...</p>
+            <p id="update-time" class="text-xs text-green-400 mt-1 font-bold">초기 데이터 로딩 중...</p>
         </header>
 
         <div class="grid grid-cols-4 gap-1 px-1 py-3 bg-gray-700 text-xs text-gray-300 font-semibold text-center border-b border-gray-600 sticky top-[72px] z-10 shadow-md">
@@ -31,7 +31,7 @@
 
         <div id="coin-list" class="divide-y divide-gray-700 bg-gray-800 pb-2 flex-grow">
             <div class="p-6 text-center text-sm text-gray-400">
-                거래량 상위 20개 코인 파악 및 소켓 연결 중...
+                실시간 거래소 데이터를 연동하고 있습니다...
             </div>
         </div>
 
@@ -44,60 +44,75 @@
     </div>
 
     <script>
-        // 가격 데이터를 저장할 메모리 객체
         const priceData = {};
         let top20Coins = [];
 
         async function initScanner() {
             try {
-                // 1. 업비트 전체 상장 코인 가져오기
+                // 1. 업비트 코인 목록 및 빗썸 전체 데이터 가져오기
                 const upbitMarketsRes = await fetch('https://api.upbit.com/v1/market/all');
                 const upbitMarkets = await upbitMarketsRes.json();
                 const cachedUpbitCoins = upbitMarkets.filter(m => m.market.startsWith('KRW-')).map(m => m.market.split('-')[1]);
 
-                // 2. 빗썸 24시간 거래대금 가져와서 상위 20개 추출 (이 작업은 처음에 1번만 합니다)
                 const bithumbRes = await fetch('https://api.bithumb.com/public/ticker/ALL_KRW');
                 const bithumbData = await bithumbRes.json();
                 
                 if(bithumbData.status !== "0000") return;
 
+                // 2. 빗썸 거래대금 상위 20개 추출
                 let activeCoins = [];
                 for (const coin in bithumbData.data) {
                     if (coin !== 'date' && cachedUpbitCoins.includes(coin)) {
                         activeCoins.push({
                             coin: coin,
-                            volume: parseFloat(bithumbData.data[coin].acc_trade_value_24h) 
+                            volume: parseFloat(bithumbData.data[coin].acc_trade_value_24h),
+                            initialBithumbPrice: parseFloat(bithumbData.data[coin].closing_price)
                         });
                     }
                 }
-
                 activeCoins.sort((a, b) => b.volume - a.volume);
-                top20Coins = activeCoins.slice(0, 20).map(c => c.coin);
+                const top20Data = activeCoins.slice(0, 20);
+                top20Coins = top20Data.map(c => c.coin);
 
-                // 3. 메모리 객체 초기화
-                top20Coins.forEach(coin => {
-                    priceData[coin] = { upbit: null, bithumb: null };
+                // 3. 빈 화면 방지를 위한 업비트 초기 시세 1회 즉시 호출
+                const upbitQuery = top20Coins.map(coin => `KRW-${coin}`).join(',');
+                const upbitInitRes = await fetch(`https://api.upbit.com/v1/ticker?markets=${upbitQuery}`);
+                const upbitInitData = await upbitInitRes.json();
+
+                const upbitInitPrices = {};
+                upbitInitData.forEach(item => {
+                    upbitInitPrices[item.market.split('-')[1]] = item.trade_price;
                 });
 
+                // 4. 가격 데이터(priceData) 즉시 채워넣기 (빈 화면 제거!)
+                top20Data.forEach(item => {
+                    priceData[item.coin] = { 
+                        upbit: upbitInitPrices[item.coin] || null, 
+                        bithumb: item.initialBithumbPrice || null 
+                    };
+                });
+
+                // 화면 즉시 1회 렌더링
+                renderUI();
                 document.getElementById('update-time').innerText = "🟢 실시간 소켓 스트리밍 가동 중";
 
-                // 4. 업비트 & 빗썸 웹소켓 연결 실행
+                // 5. 웹소켓 연결 (이후부터는 소켓이 가격을 덮어씀)
                 connectUpbitSocket();
                 connectBithumbSocket();
 
-                // 5. 화면 렌더링은 0.5초마다 따로 실행 (화면 깜빡임 최적화)
+                // 6. 화면 깜빡임 제어를 위해 0.5초마다 UI 갱신
                 setInterval(renderUI, 500);
 
             } catch (error) {
                 console.error('초기 설정 오류:', error);
-                document.getElementById('update-time').innerText = "🔴 초기 연결 실패. 새로고침 해주세요.";
+                document.getElementById('update-time').innerText = "🔴 연결 지연. 새로고침 해주세요.";
             }
         }
 
-        // --- 업비트 웹소켓 ---
+        // --- 업비트 웹소켓 (모바일 호환성 강화) ---
         function connectUpbitSocket() {
             const ws = new WebSocket('wss://api.upbit.com/websocket/v1');
-            ws.binaryType = 'arraybuffer'; // 업비트는 데이터를 바이너리로 보냄
+            ws.binaryType = 'blob'; // 스마트폰 브라우저 호환을 위한 Blob 처리
 
             ws.onopen = () => {
                 const codes = top20Coins.map(coin => `KRW-${coin}`);
@@ -107,19 +122,24 @@
                 ]));
             };
 
-            ws.onmessage = (event) => {
-                const enc = new TextDecoder("utf-8");
-                const arr = new Uint8Array(event.data);
-                const data = JSON.parse(enc.decode(arr));
-                const coin = data.code.split('-')[1];
-                
-                if(priceData[coin]) {
-                    priceData[coin].upbit = data.trade_price;
+            ws.onmessage = async (event) => {
+                try {
+                    // 압축 데이터 해제 안정성 강화
+                    const text = await event.data.text();
+                    const data = JSON.parse(text);
+                    if(data.code) {
+                        const coin = data.code.split('-')[1];
+                        if(priceData[coin]) {
+                            priceData[coin].upbit = data.trade_price;
+                        }
+                    }
+                } catch (e) {
+                    // 에러 발생 시 무시하고 진행
                 }
             };
         }
 
-        // --- 빗썸 웹소켓 ---
+        // --- 빗썸 웹소켓 (수신 타입 24H로 안정화) ---
         function connectBithumbSocket() {
             const ws = new WebSocket('wss://pubwss.bithumb.com/pub/ws');
 
@@ -128,18 +148,20 @@
                 ws.send(JSON.stringify({
                     type: "ticker",
                     symbols: symbols,
-                    tickTypes: ["MID"] // 실시간 현재가
+                    tickTypes: ["24H"] // 수신율이 가장 안정적인 24H 타입 사용
                 }));
             };
 
             ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if(data.type === 'ticker') {
-                    const coin = data.content.symbol.split('_')[0];
-                    if(priceData[coin]) {
-                        priceData[coin].bithumb = parseFloat(data.content.closePrice);
+                try {
+                    const data = JSON.parse(event.data);
+                    if(data.type === 'ticker') {
+                        const coin = data.content.symbol.split('_')[0];
+                        if(priceData[coin]) {
+                            priceData[coin].bithumb = parseFloat(data.content.closePrice);
+                        }
                     }
-                }
+                } catch (e) {}
             };
         }
 
@@ -147,7 +169,6 @@
         function renderUI() {
             let analysisResults = [];
 
-            // 양쪽 거래소 가격이 모두 수신된 코인만 차액 계산
             top20Coins.forEach(coin => {
                 const uPrice = priceData[coin].upbit;
                 const bPrice = priceData[coin].bithumb;
@@ -164,11 +185,10 @@
                 }
             });
 
-            // 절대값 기준 내림차순 정렬
             analysisResults.sort((a, b) => b.absGap - a.absGap);
 
             const listContainer = document.getElementById('coin-list');
-            if(analysisResults.length === 0) return; // 아직 데이터가 없으면 패스
+            if(analysisResults.length === 0) return; 
 
             let htmlString = "";
             analysisResults.forEach(data => {
@@ -198,7 +218,6 @@
             listContainer.innerHTML = htmlString;
         }
 
-        // 프로그램 시작
         initScanner();
     </script>
 </body>
