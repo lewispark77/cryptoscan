@@ -11,7 +11,10 @@
     <meta property="og:url" content="https://lewispark77.github.io/cryptoscan/">
     <meta property="og:type" content="website">
 
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#111827"> <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-900 text-white flex justify-center min-h-screen font-sans">
 
@@ -46,12 +49,10 @@
         
         const fallbackCoins = ['BTC', 'ETH', 'XRP', 'SOL', 'DOGE', 'SHIB', 'ADA', 'TRX', 'BCH', 'ETC', 'SUI', 'APT', 'SEI', 'STX', 'AVAX', 'LINK', 'DOT', 'NEAR', 'SAND', 'MANA'];
 
-        // 고정 거래 금액 (1천만 원) 및 예상 총 수수료율 (0.1%)
         const tradeVolume = 10000000;
-        const totalFeeRate = 0.0010; // 0.1%
+        const totalFeeRate = 0.0010; 
 
         async function initScanner() {
-            // 빈 화면 방지 세팅
             top20Coins = fallbackCoins;
             top20Coins.forEach(coin => {
                 priceData[coin] = { upbit: null, bithumb: null };
@@ -59,7 +60,6 @@
             renderUI(); 
 
             try {
-                // 빗썸 거래량 상위 20개 추출
                 const bithumbRes = await fetch('https://api.bithumb.com/public/ticker/ALL_KRW');
                 if(bithumbRes.ok) {
                     const bithumbData = await bithumbRes.json();
@@ -82,7 +82,6 @@
                     });
                 }
 
-                // 업비트 초기 가격 1회 호출
                 const upbitQuery = top20Coins.map(coin => `KRW-${coin}`).join(',');
                 const upbitInitRes = await fetch(`https://api.upbit.com/v1/ticker?markets=${upbitQuery}`);
                 if(upbitInitRes.ok) {
@@ -99,15 +98,12 @@
             renderUI();
             document.getElementById('update-time').innerText = "🟢 실시간 스트리밍 가동 중";
 
-            // 웹소켓 연결
             connectUpbitSocket();
             connectBithumbSocket();
 
-            // 0.5초 렌더링 루프
             setInterval(renderUI, 500);
         }
 
-        // --- 업비트 웹소켓 ---
         function connectUpbitSocket() {
             const ws = new WebSocket('wss://api.upbit.com/websocket/v1');
             ws.binaryType = 'blob'; 
@@ -137,7 +133,6 @@
             };
         }
 
-        // --- 빗썸 웹소켓 ---
         function connectBithumbSocket() {
             const ws = new WebSocket('wss://pubwss.bithumb.com/pub/ws');
 
@@ -163,7 +158,6 @@
             };
         }
 
-        // --- 화면 그리기 로직 (직관성 강화) ---
         function renderUI() {
             let analysisResults = [];
 
@@ -179,11 +173,10 @@
                     diff = uPrice - bPrice; 
                     absGap = Math.abs(diff);
 
-                    // 현실적인 마진 계산 로직 적용
                     const minPrice = Math.min(uPrice, bPrice);
                     const gapRate = absGap / minPrice;
-                    const realMarginRate = gapRate - totalFeeRate; // 수익률에서 수수료 차감
-                    marginKRW = Math.floor(tradeVolume * realMarginRate); // 소수점 버림
+                    const realMarginRate = gapRate - totalFeeRate; 
+                    marginKRW = Math.floor(tradeVolume * realMarginRate); 
                 }
 
                 analysisResults.push({
@@ -196,7 +189,6 @@
                 });
             });
 
-            // 절대값 기준 내림차순 정렬 (차익 기회가 큰 순서)
             analysisResults.sort((a, b) => b.absGap - a.absGap);
 
             let htmlString = "";
@@ -213,12 +205,11 @@
                     let marginDisplay = "";
                     
                     if (data.marginKRW > 0) {
-                        diffColorClass = "text-red-400"; // 양수
+                        diffColorClass = "text-red-400"; 
                         sign = "+";
-                        // 직관적인 원화 마진 표시
                         marginDisplay = `<br><span class="text-yellow-300 font-bold text-xs">(+${data.marginKRW.toLocaleString()})</span>`;
                     } else if (data.diff < 0) {
-                        diffColorClass = "text-blue-400"; // 음수 (마진은 여전히 플러스)
+                        diffColorClass = "text-blue-400"; 
                         sign = "-";
                         marginDisplay = `<br><span class="text-yellow-300 font-bold text-xs">(+${data.marginKRW.toLocaleString()})</span>`;
                     }
