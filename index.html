@@ -51,7 +51,6 @@
         
         const fallbackCoins = ['BTC', 'ETH', 'XRP', 'SOL', 'DOGE', 'SHIB', 'ADA', 'TRX', 'BCH', 'ETC', 'SUI', 'APT', 'SEI', 'STX', 'AVAX', 'LINK', 'DOT', 'NEAR', 'SAND', 'MANA'];
 
-        // 💡 코인별 전송 네트워크 및 특징 맵핑 사전
         const networkTags = {
             'XRP': '리플 (초고속/저렴)',
             'TRX': '트론 (초고속/저렴)',
@@ -224,22 +223,29 @@
 
                 if (data.diff !== null) {
                     const fmtGap = Math.abs(data.diff).toLocaleString();
-                    let marginDisplay = "";
                     
-                    if (data.marginKRW > 0) {
-                        diffColorClass = "text-red-400"; 
+                    // 1. 방향에 따른 기호 및 색상 분리 (업비트 기준)
+                    if (data.diff > 0) {
+                        diffColorClass = "text-red-400"; // 업비트가 비싸면 빨강
                         sign = "+";
-                        marginDisplay = `<br><span class="text-yellow-300 font-bold text-xs">(+${data.marginKRW.toLocaleString()})</span>`;
                     } else if (data.diff < 0) {
-                        diffColorClass = "text-blue-400"; 
+                        diffColorClass = "text-blue-400"; // 빗썸이 비싸면 파랑
                         sign = "-";
+                    } else {
+                        diffColorClass = "text-gray-300"; // 똑같으면 회색
+                    }
+
+                    // 2. 마진 표시 (수수료를 제한 진짜 수익이 0보다 클 때만 표시)
+                    let marginDisplay = "";
+                    if (data.marginKRW > 0) {
                         marginDisplay = `<br><span class="text-yellow-300 font-bold text-xs">(+${data.marginKRW.toLocaleString()})</span>`;
+                    } else {
+                        marginDisplay = `<br><span class="text-gray-500 font-normal text-[10px]">(수수료 미달)</span>`;
                     }
                     
                     gapDisplay = `${sign}${fmtGap}${marginDisplay}`;
                 }
 
-                // 💡 코인 이름 밑에 네트워크 태그 달아주기
                 const tagInfo = networkTags[data.coin] || '망 확인필요';
 
                 htmlString += `
