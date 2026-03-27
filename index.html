@@ -14,7 +14,9 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#111827"> <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="theme-color" content="#111827">
+
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-900 text-white flex justify-center min-h-screen font-sans">
 
@@ -26,7 +28,7 @@
         </header>
 
         <div class="grid grid-cols-[1.5fr,1.5fr,2.2fr,1.5fr] gap-1 px-1 py-3 bg-gray-700 text-xs text-gray-300 font-semibold text-center border-b border-gray-600 sticky top-[64px] z-10 shadow-md">
-            <div>코인명</div>
+            <div>코인명 <span class="text-[10px] font-normal text-gray-400">(망)</span></div>
             <div>업비트(KRW)</div>
             <div class="text-white font-bold">차액(Gap) / <span class="text-yellow-300">1천만 마진</span></div>
             <div>빗썸(KRW)</div>
@@ -36,7 +38,7 @@
             </div>
 
         <div class="p-3 bg-gray-900 border-t border-gray-800 sticky bottom-0 z-10">
-            <a href="https://blog.naver.com/lewispark77" target="_blank" class="block w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg text-sm transition-colors shadow-lg">
+            <a href="https://blog.naver.com/" target="_blank" class="block w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg text-sm transition-colors shadow-lg">
                 상한가 헌터 헤리 블로그 바로가기
             </a>
         </div>
@@ -48,6 +50,26 @@
         let top20Coins = [];
         
         const fallbackCoins = ['BTC', 'ETH', 'XRP', 'SOL', 'DOGE', 'SHIB', 'ADA', 'TRX', 'BCH', 'ETC', 'SUI', 'APT', 'SEI', 'STX', 'AVAX', 'LINK', 'DOT', 'NEAR', 'SAND', 'MANA'];
+
+        // 💡 코인별 전송 네트워크 및 특징 맵핑 사전
+        const networkTags = {
+            'XRP': '리플 (초고속/저렴)',
+            'TRX': '트론 (초고속/저렴)',
+            'SOL': '솔라나 (초고속)',
+            'DOGE': '도지 (보통)',
+            'ADA': '에이다 (보통)',
+            'BTC': '비트코인 (느림/비쌈)',
+            'ETH': 'ERC-20 (느림/비쌈)',
+            'BCH': '비트캐시 (보통)',
+            'ETC': '이더클래식 (느림)',
+            'SHIB': 'ERC-20 (느림)',
+            'SAND': 'ERC-20 (느림)',
+            'LINK': 'ERC-20 (느림)',
+            'MANA': 'ERC-20 (느림)',
+            'SUI': '수이 (빠름)',
+            'APT': '앱토스 (빠름)',
+            'SEI': '세이 (빠름)'
+        };
 
         const tradeVolume = 10000000;
         const totalFeeRate = 0.0010; 
@@ -217,9 +239,15 @@
                     gapDisplay = `${sign}${fmtGap}${marginDisplay}`;
                 }
 
+                // 💡 코인 이름 밑에 네트워크 태그 달아주기
+                const tagInfo = networkTags[data.coin] || '망 확인필요';
+
                 htmlString += `
                 <div class="grid grid-cols-[1.5fr,1.5fr,2.2fr,1.5fr] gap-1 px-1 py-4 items-center text-sm text-center border-b border-gray-700 transition-all duration-200">
-                    <div class="font-bold text-gray-100">${data.coin}</div>
+                    <div class="font-bold text-gray-100 flex flex-col items-center justify-center">
+                        <span>${data.coin}</span>
+                        <span class="text-[10px] text-gray-400 font-normal mt-0.5">(${tagInfo})</span>
+                    </div>
                     <div class="text-gray-300">${fmtUpbit}</div>
                     <div class="font-bold ${diffColorClass}">${gapDisplay}</div>
                     <div class="text-gray-300">${fmtBithumb}</div>
